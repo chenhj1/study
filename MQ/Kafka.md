@@ -96,3 +96,28 @@ segment 文件由两部分组成，分别为 “.index” 文件和 “.log” �
 这个问题由消息的物理结构解决，消息都具有固定的物理结构，包括：offset（8 Bytes）、消息体的大小（4 Bytes）、crc32（4 Bytes）、magic（1 Byte）、attributes（1 Byte）、key length（4 Bytes）、key（K Bytes）、payload（N Bytes）等等字段，可以确定一条消息的大小，即读取到哪里截止。
 
 #### 复制原理和同步方式
+```
+func (cb *CourseBiz) UpdateCourseBizStatus(r *course.UpdateCourseBizStatusRequest)(resp *course.UpdateCourseBizStatusResponse ,err error) {
+	resp = &course.UpdateCourseBizStatusResponse{
+		BaseResp: &base.BaseResp{
+			StatusMessage: "success",
+			StatusCode:    0,
+		},
+	}
+
+	defer func() {
+		if err != nil {
+			resp.BaseResp.StatusCode, resp.BaseResp.StatusMessage = exerr.GetErrorMsg(err)
+			logs.CtxError(cb.ctx, "UpdateCourseBizStatus error=%s", err)
+		}
+	}()
+
+	courseBizDal := dal.NewCourseBizDal(cb.ctx)
+	err = courseBizDal.UpdateStatus(r.GetCourseBizId(), int16(r.GetStatus()), r.GetExtra())
+	if err != nil {
+		logs.CtxError(cb.ctx, "UpdateCourseBizStatus error, err=%v", err)
+		return resp, err
+	}
+	return resp, nil
+}
+```
