@@ -35,7 +35,7 @@
 
 在创建 topic 时可以在 $KAFKA_HOME/config/server.properties 中指定这个 partition 的数量（如下所示），当然可以在 topic 创建之后去修改 partition 的数量。
 
-```
+```bash
 # The default number of log partitions per topic. More partitions allow greater
 # parallelism for consumption, but this will also result in more files across
 # the brokers.
@@ -56,7 +56,7 @@ Kafka 中消息是以 topic 进行分类的，生产者通过 topic 向 Kafka br
 
 为了便于说明问题，假设这里只有一个 Kafka 集群，且这个集群只有一个 Kafka broker，即只有一台物理机。在这个 Kafka broker 中配置 log.dirs=/tmp/kafka-logs，以此来设置 Kafka 消息文件存储目录；与此同时，通过命令创建一个 topic：mytopic_test，partition 的数量配置为 4（创建 topic 的命令请见上一课）。之后，可以在 /tmp/kafka-logs 目录中可以看到生成了 4 个目录：
 
-```
+```bash
 drwxr-xr-x 2 root root 4096 Apr 15 13:21 mytopic_test-0
 drwxr-xr-x 2 root root 4096 Apr 15 13:21 mytopic_test-1
 drwxr-xr-x 2 root root 4096 Apr 15 13:21 mytopic_test-2
@@ -73,7 +73,7 @@ drwxr-xr-x 2 root root 4096 Apr 15 13:21 mytopic_test-3
 
 segment 文件由两部分组成，分别为 “.index” 文件和 “.log” 文件，分别表示为 segment 索引文件和数据文件。这两个文件的命令规则为：partition 全局的第一个 segment 从 0 开始，后续每个 segment 文件名为上一个 segment 文件最后一条消息的 offset 值，数值大小为 64 位，20 位数字字符长度，没有数字用 0 填充，如下：
 
-```
+```bash
 00000000000000000000.index
 00000000000000000000.log
 00000000000000170410.index
@@ -96,28 +96,3 @@ segment 文件由两部分组成，分别为 “.index” 文件和 “.log” �
 这个问题由消息的物理结构解决，消息都具有固定的物理结构，包括：offset（8 Bytes）、消息体的大小（4 Bytes）、crc32（4 Bytes）、magic（1 Byte）、attributes（1 Byte）、key length（4 Bytes）、key（K Bytes）、payload（N Bytes）等等字段，可以确定一条消息的大小，即读取到哪里截止。
 
 #### 复制原理和同步方式
-```
-func (cb *CourseBiz) UpdateCourseBizStatus(r *course.UpdateCourseBizStatusRequest)(resp *course.UpdateCourseBizStatusResponse ,err error) {
-	resp = &course.UpdateCourseBizStatusResponse{
-		BaseResp: &base.BaseResp{
-			StatusMessage: "success",
-			StatusCode:    0,
-		},
-	}
-
-	defer func() {
-		if err != nil {
-			resp.BaseResp.StatusCode, resp.BaseResp.StatusMessage = exerr.GetErrorMsg(err)
-			logs.CtxError(cb.ctx, "UpdateCourseBizStatus error=%s", err)
-		}
-	}()
-
-	courseBizDal := dal.NewCourseBizDal(cb.ctx)
-	err = courseBizDal.UpdateStatus(r.GetCourseBizId(), int16(r.GetStatus()), r.GetExtra())
-	if err != nil {
-		logs.CtxError(cb.ctx, "UpdateCourseBizStatus error, err=%v", err)
-		return resp, err
-	}
-	return resp, nil
-}
-```
