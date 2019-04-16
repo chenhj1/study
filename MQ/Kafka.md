@@ -113,7 +113,7 @@ Kafka 中 topic 的每个 partition 有一个预写式的日志文件，虽然 p
 
 一个 partition 有多个副本（replicas），为了提高可靠性，这些副本分散在不同的 broker 上，由于带宽、读写性能、网络延迟等因素，同一时刻，这些副本的状态通常是不一致的：即 followers 与 leader 的状态不一致。那么，如何保证新选举出的 leader 是优选呢？ Kafka 机制中，leader 将负责维护和跟踪一个 ISR（In-Sync Replicas）列表，即同步副本队列，这个列表里面的副本与 leader 保持同步，状态一致。如果新的 leader 从 ISR 列表中的副本中选出，那么就可以保证新 leader 为优选。当然，这不是唯一的策略，下文将继续解读。
 
-####同步副本 ISR
+#### 同步副本 ISR
 
 上一节中讲到了同步副本队列 ISR（In-Sync Replicas）。虽然副本极大的增强了可用性，但是副本数量对 Kafka 的吞吐率有一定影响。默认情况下 Kafka 的 replica 数量为 1，即每个 partition 都只有唯一的 leader，无 follower，没有容灾能力。为了确保消息的可靠性，生产环境中，通常将其值（由 broker 的参数 offsets.topic.replication.factor 指定）大小设置为大于 1，比如 3。 所有的副本（replicas）统称为 Assigned Replicas，即 AR。ISR 是 AR 中的一个子集，由 leader 维护 ISR 列表，follower 从 leader 同步数据有一些延迟（由参数 replica.lag.time.max.ms 设置超时阈值），超过阈值的 follower 将被剔除出 ISR， 存入 OSR（Outof-Sync Replicas）列表，新加入的 follower 也会先存放在 OSR 中。AR=ISR+OSR。
 
@@ -159,7 +159,7 @@ org.apache.kafka.common.errors.NotEnoughReplicasExceptoin: Messages are rejected
 ```
 不难理解，如果 min.insync.replicas 设置为 2，当 ISR 中实际副本数为 1 时（只有leader），将无法保证可靠性，此时拒绝客户端的写请求以防止消息丢失。
 
-####深入解读 HW 机制
+#### 深入解读 HW 机制
 考虑这样一种场景：acks=-1，部分 ISR 副本完成同步，此时leader挂掉，如下图所示：follower1 同步了消息 4、5，follower2 同步了消息 4，与此同时 follower2 被选举为 leader，那么此时 follower1 中的多出的消息 5 该做如何处理呢？
 
 ![image](../raw/kafka8.png)
@@ -174,7 +174,7 @@ org.apache.kafka.common.errors.NotEnoughReplicasExceptoin: Messages are rejected
 
 当 ISR 中的个副本的 LEO 不一致时，如果此时 leader 挂掉，选举新的 leader 时并不是按照 LEO 的高低进行选举，而是按照 ISR 中的顺序选举。
 
-####Leader 选举
+#### Leader 选举
 为了保证可靠性，对于任意一条消息，只有它被 ISR 中的所有 follower 都从 leader 复制过去才会被认为已提交，并返回信息给 producer。如此，可以避免因部分数据被写进 leader，而尚未被任何 follower 复制就宕机的情况下而造成数据丢失。对于 producer 而言，它可以选择是否等待消息 commit，这可以通过参数 request.required.acks 来设置。这种机制可以确保：只要 ISR 中有一个或者以上的 follower，一条被 commit 的消息就不会丢失。
 
 **问题 1：如何在保证可靠性的前提下避免吞吐量下降？**
@@ -208,18 +208,18 @@ Kafka 在 ZooKeeper 中为每一个 partition 动态的维护了一个 ISR，这
 
 `unclean.leader.election.enable` 这个参数对于 leader 的选举、系统的可用性以及数据的可靠性都有至关重要的影响。生产环境中应慎重权衡。
 
-###Kafka 架构中 ZooKeeper 以怎样的形式存在？
+### Kafka 架构中 ZooKeeper 以怎样的形式存在？
 
 ZooKeeper 是一个分布式的、开放源码的分布式应用程序协调服务，是 Google 的 Chubby 一个开源的实现。分布式应用程序可以基于它实现统一命名服务、状态同步服务、集群管理、分布式应用配置项的管理等工作。在基于 Kafka 的分布式消息队列中，ZooKeeper 的作用有：broker 注册、topic 注册、producer 和 consumer 负载均衡、维护 partition 与 consumer 的关系、记录消息消费的进度以及 consumer 注册等。
 
-####broker 在 ZooKeeper 中的注册
+#### broker 在 ZooKeeper 中的注册
 
 * 为了记录 broker 的注册信息，在 ZooKeeper 上，专门创建了属于 Kafka 的一个节点，其路径为 /brokers；
 * Kafka 的每个 broker 启动时，都会到 ZooKeeper 中进行注册，告诉 ZooKeeper 其 broker.id，在整个集群中，broker.id 应该全局唯一，并在 ZooKeeper 上创建其属于自己的节点，其节点路径为 /brokers/ids/{broker.id}；
 * 创建完节点后，Kafka 会将该 broker 的 broker.name 及端口号记录到该节点；
 * 另外，该 broker 节点属性为临时节点，当 broker 会话失效时，ZooKeeper 会删除该节点，这样，我们就可以很方便的监控到broker 节点的变化，及时调整负载均衡等。
 
-####Topic 在 ZooKeeper 中的注册
+#### Topic 在 ZooKeeper 中的注册
 
 在 Kafka 中，所有 topic 与 broker 的对应关系都由 ZooKeeper 进行维护，在 ZooKeeper 中，建立专门的节点来记录这些信息，其节点路径为 /brokers/topics/{topic_name}。 前面说过，为了保障数据的可靠性，每个 Topic 的 Partitions 实际上是存在备份的，并且备份的数量由 Kafka 机制中的 replicas 来控制。那么问题来了：如下图所示，假设某个 TopicA 被分为 2 个 Partitions，并且存在两个备份，由于这 2 个 Partitions（1-2）被分布在不同的 broker 上，同一个 partiton 与其备份不能（也不应该）存储于同一个 broker 上。以 Partition1 为例，假设它被存储于 broker2，其对应的备份分别存储于 broker1 和 broker4，有了备份，可靠性得到保障，但数据一致性却是个问题。
 
@@ -231,7 +231,7 @@ ZooKeeper 是一个分布式的、开放源码的分布式应用程序协调服�
 
 基于上图的架构，当 producer push 的消息写入 partition（分区) 时，作为 leader 的 broker（Kafka 节点） 会将消息写入自己的分区，同时还会将此消息复制到各个 follower，实现同步。如果，某个follower 挂掉，leader 会再找一个替代并同步消息；如果 leader 挂了，follower 们会选举出一个新的 leader 替代，继续业务，这些都是由 ZooKeeper 完成的。
 
-####consumer 在 ZooKeeper 中的注册
+#### Consumer 在 ZooKeeper 中的注册
 
 **注册新的消费者分组**
 
